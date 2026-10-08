@@ -4,18 +4,21 @@ import { build } from 'esbuild';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const result = await build({
-  entryPoints: ['src/main.tsx'],
+  entryPoints: ['src/main.tsx', 'src/review.ts'],
+  alias: { '@app': process.env.APP_SRC ?? '../app-src' },
   bundle: true,
   minify: true,
   write: false,
   outdir: 'out',
+  outbase: 'src',
   format: 'iife',
+  splitting: false,
   jsx: 'automatic',
   loader: { '.css': 'css' },
   define: { 'process.env.NODE_ENV': '"production"' },
   nodePaths: [process.env.NODE_PATH ?? ''],
 });
-const js = result.outputFiles.find((f) => f.path.endsWith('.js')).text;
+const js = result.outputFiles.filter((f) => f.path.endsWith('.js')).map((f) => f.text).join('\n');
 const css = readFileSync('src/style.css', 'utf8');
 const page = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

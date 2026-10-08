@@ -93,4 +93,373 @@ react/cjs/react-jsx-runtime.production.js:
    * LICENSE file in the root directory of this source tree.
    *)
 */
+
+(()=>{var l={pin:"#2563eb",pinWash:"rgba(37,99,235,.08)",draft:"#f59e0b",on:"#fff",shadow:"rgba(0,0,0,.45)"},P=String.raw`
+  var doc = document;
+  var collapse = function (t) { return String(t || '').replace(/\s+/g, ' ').trim(); };
+  var esc = function (v) { return (window.CSS && CSS.escape) ? CSS.escape(v) : String(v).replace(/[^\w-]/g, '\\$&'); };
+  var unique = function (sel) { try { return doc.querySelectorAll(sel).length === 1; } catch (e) { return false; } };
+  var route = function () { return location.pathname + location.hash; };
+  // Which state of the page a prototype is showing. Recorded with a comment and compared when the
+  // comment is placed again, so the two must read it the same way: one definition, used by both.
+  var pageState = function () { return location.search.slice(0, 200); };
+  var segment = function (el) {
+    var ref = el.getAttribute('data-e2e-ref');
+    if (ref) return '[data-e2e-ref="' + ref.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
+    // Ids React and component libraries generate at render time (":r1:", "mui-3") are not
+    // the same next time, so they are not used to find an element again.
+    if (el.id && !/^(:r|mui-|radix-|react-|rc_)|\d{3,}/i.test(el.id) && unique('#' + esc(el.id))) return '#' + esc(el.id);
+    var tag = el.tagName.toLowerCase();
+    var n = 1, sib = el;
+    while ((sib = sib.previousElementSibling)) { if (sib.tagName === el.tagName) n++; }
+    return tag + ':nth-of-type(' + n + ')';
+  };
+  /** The nearest ancestor with a stable name, which is the part of the page least likely to be rearranged. */
+  var namedScope = function (el) {
+    var cur = el.parentElement;
+    while (cur && cur !== doc.body && cur !== doc.documentElement) {
+      if (cur.getAttribute('data-e2e-ref')) return cur;
+      cur = cur.parentElement;
+    }
+    return null;
+  };
+  /**
+   * How an element is found again after the code has changed.
+   *
+   * A path of direct children says where an element sits in a tree that is about to be
+   * rearranged: inserting one wrapper div, which is what restyling does, breaks it. So when the element
+   * has no stable name of its own, it is described as a *descendant* of the nearest element that does
+   * ("the p inside billing-card"). That holds through anything done inside the card, and is scoped to
+   * the card, so it cannot drift onto an identical-looking element elsewhere on the page. The old path
+   * remains for a page with no stable names anywhere.
+   */
+  var selectorFor = function (el) {
+    var own = segment(el);
+    if (own.charAt(0) === '[' || own.charAt(0) === '#') return own;
+    var scope = namedScope(el);
+    if (scope) {
+      var head = segment(scope) + ' ', tag = el.tagName.toLowerCase();
+      if (unique(head + tag)) return head + tag;
+      var same = scope.querySelectorAll(tag);
+      for (var i = 0; i < same.length; i++) {
+        if (same[i] === el) {
+          var nth = head + tag + ':nth-of-type(' + (i + 1) + ')';
+          // nth-of-type counts among siblings, not among matches, so it only means this element when it agrees.
+          if (doc.querySelectorAll(nth).length === 1 && doc.querySelector(nth) === el) return nth;
+          break;
+        }
+      }
+    }
+    var parts = [], cur = el;
+    while (cur && cur.nodeType === 1 && cur !== doc.documentElement) {
+      parts.unshift(segment(cur));
+      var sel = parts.join(' > ');
+      if (unique(sel)) return sel;
+      cur = cur.parentElement;
+    }
+    return parts.join(' > ') || 'html';
+  };
+  /** The page's own element at a point, ignoring this app's pins. */
+  var underlying = function (x, y) {
+    var stack = doc.elementsFromPoint ? doc.elementsFromPoint(x, y) : [];
+    for (var i = 0; i < stack.length; i++) { if (!stack[i].closest('[data-fd-layer]')) return stack[i]; }
+    return null;
+  };
+  /** The text of the heading a container leads with, if it has one. */
+  var headingOf = function (container) {
+    for (var i = 0; i < container.children.length; i++) {
+      var c = container.children[i];
+      if (/^(H[1-6]|LEGEND)$/.test(c.tagName)) return collapse(c.textContent);
+      if (c.tagName === 'HEADER') {
+        for (var j = 0; j < c.children.length; j++) { if (/^H[1-6]$/.test(c.children[j].tagName)) return collapse(c.children[j].textContent); }
+      }
+    }
+    return '';
+  };
+  /**
+   * The named containers an element sits inside, outermost first (at most three): what a person would call
+   * the section. A container is named by its aria-label, its own heading, or its stable name. This is text
+   * a person or an agent can search for, which a path of nth-of-type cannot be.
+   */
+  var containers = function (el) {
+    var found = [], own = collapse(el.textContent).slice(0, 60), cur = el.parentElement;
+    while (cur && cur !== doc.body && cur !== doc.documentElement && found.length < 3) {
+      var label = collapse(cur.getAttribute('aria-label') || '') || headingOf(cur) || collapse(cur.getAttribute('data-e2e-ref') || '');
+      label = label.slice(0, 60);
+      if (label && label !== own && found.indexOf(label) < 0) found.push(label);
+      cur = cur.parentElement;
+    }
+    return found.reverse();
+  };
+  /** Where a click landed: the element, and the position inside it. */
+  var describe = function (el, x, y) {
+    var rect = el.getBoundingClientRect();
+    return {
+      route: route(),
+      selector: selectorFor(el),
+      tag: el.tagName.toLowerCase(),
+      inside: containers(el),
+      nearbyText: collapse(el.innerText || el.textContent).slice(0, 80),
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      commit: '',
+      // Which state of the page: a prototype's switch lives in the query string, so a comment
+      // made on Error is not mistaken for one made on Loaded.
+      state: pageState(),
+      offset: rect.width > 0 && rect.height > 0
+        ? { x: (x - rect.left) / rect.width, y: (y - rect.top) / rect.height }
+        : { x: 0, y: 0 }
+    };
+  };
+  /**
+   * The blue outline and its label, which show what a pin will attach to.
+   *
+   * Shared by placing a pin and dragging one: a pin that is dropped re-attaches to whatever is under
+   * it, so the person moving it needs to see the same thing as the person placing it, looking the
+   * same way. Returns what the caller drives it with; remove() takes it off the page again.
+   */
+  var hoverOutline = function () {
+    var outline = doc.createElement('div');
+    outline.setAttribute('data-fd-layer', 'hover');
+    outline.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483646;display:none;border:2px solid ${l.pin};background:${l.pinWash};border-radius:2px;box-sizing:border-box';
+    var chip = doc.createElement('div');
+    chip.setAttribute('data-fd-layer', 'hover');
+    chip.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;display:none;background:${l.pin};color:${l.on};font:600 11px/1.4 sans-serif;padding:2px 6px;border-radius:3px;max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    doc.documentElement.appendChild(outline);
+    doc.documentElement.appendChild(chip);
+    return {
+      /** Draws it around el, with its tag and text; hint is appended to the label when given. */
+      show: function (el, hint) {
+        if (!el || el.nodeType !== 1) { outline.style.display = 'none'; chip.style.display = 'none'; return; }
+        var r = el.getBoundingClientRect();
+        outline.style.display = 'block';
+        outline.style.left = r.left + 'px';
+        outline.style.top = r.top + 'px';
+        outline.style.width = r.width + 'px';
+        outline.style.height = r.height + 'px';
+        chip.textContent = '<' + el.tagName.toLowerCase() + '> ' + collapse(el.innerText || el.textContent).slice(0, 40) + (hint || '');
+        chip.style.display = 'block';
+        chip.style.left = Math.max(0, r.left) + 'px';
+        chip.style.top = (r.top > 22 ? r.top - 22 : r.bottom + 2) + 'px';
+      },
+      hide: function () { outline.style.display = 'none'; chip.style.display = 'none'; },
+      remove: function () { outline.remove(); chip.remove(); }
+    };
+  };
+`,L=String.raw`(function () {
+${P}
+  return new Promise(function (resolve) {
+    var style = doc.createElement('style');
+    style.setAttribute('data-fd', 'pick');
+    style.textContent = 'html, html * { cursor: crosshair !important }';
+    doc.head.appendChild(style);
+
+    // What the pin will attach to is shown before the click: the element under the pointer is outlined and
+    // named. Up and Down arrows climb to its container and back, for a comment about a section and not a
+    // line. What is recorded is exactly what is outlined, never a guess about what was meant.
+    var hover = hoverOutline();
+    var stack = [];
+    var chosen = function () { return stack.length ? stack[stack.length - 1] : null; };
+    var paint = function () {
+      var el = chosen();
+      if (!el) return hover.hide();
+      var up = el.parentElement && el.parentElement !== doc.body && el.parentElement !== doc.documentElement;
+      hover.show(el, up ? '    ↑ container' : '');
+    };
+    var move = function (e) {
+      var el = underlying(e.clientX, e.clientY);
+      if (el && el.nodeType === 1 && (stack.length === 0 || stack[0] !== el)) { stack = [el]; paint(); }
+    };
+
+    var swallow = function (e) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); };
+    var done = function (value) {
+      style.remove();
+      hover.remove();
+      doc.removeEventListener('click', click, true);
+      doc.removeEventListener('mousedown', swallow, true);
+      doc.removeEventListener('mouseup', swallow, true);
+      doc.removeEventListener('keydown', key, true);
+      doc.removeEventListener('mousemove', move, true);
+      window.removeEventListener('scroll', paint, true);
+      window.__fdCancelPick = undefined;
+      resolve(value);
+    };
+    var click = function (e) {
+      swallow(e);
+      // The element that is outlined, which is the one the person chose. A click that arrives with nothing
+      // outlined yet (no pointer move came first) takes the element under it.
+      var el = chosen();
+      if (!el || !el.isConnected) {
+        el = e.target;
+        // A click on one of this app's own layers lands on the page beneath it.
+        if (el && el.closest && el.closest('[data-fd-layer]')) el = underlying(e.clientX, e.clientY);
+      }
+      if (!el || el.nodeType !== 1) return done(null);
+      var info = describe(el, e.clientX, e.clientY);
+      // Where the click landed in the page, so the app can put the comment box beside the pin; and the
+      // element's own box, so the picture can frame the element and not a fixed square around the click.
+      info.at = { x: e.clientX, y: e.clientY };
+      var r = el.getBoundingClientRect();
+      info.box = { x: r.left, y: r.top, width: r.width, height: r.height };
+      done(info);
+    };
+    var key = function (e) {
+      if (e.key === 'Escape') return done(null);
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        swallow(e);
+        if (e.key === 'ArrowUp') {
+          var el = chosen();
+          var p = el && el.parentElement;
+          if (p && p !== doc.body && p !== doc.documentElement) { stack.push(p); paint(); }
+        } else if (stack.length > 1) { stack.pop(); paint(); }
+      }
+    };
+    window.__fdCancelPick = function () { done(null); };
+    doc.addEventListener('click', click, true);
+    doc.addEventListener('mousedown', swallow, true);
+    doc.addEventListener('mouseup', swallow, true);
+    doc.addEventListener('keydown', key, true);
+    doc.addEventListener('mousemove', move, true);
+    window.addEventListener('scroll', paint, true);
+  });
+})()`;var _="window.__fdCancelPick && window.__fdCancelPick()",y="__fd:",I=(e,t)=>String.raw`(function (items, nonce) {
+${P}
+  var old = window.__fdMarkers;
+  if (old) { old.stop(); }
+  // The pins' own layer, not the first of the app's layers: comment mode keeps an outline on the page too, and
+  // a redraw that took that one left the old pins behind (a deleted comment's pin stayed on the page).
+  var layer = doc.querySelector('[data-fd-layer="pins"]');
+  if (layer) layer.remove();
+  var say = function (msg) { msg.n = nonce; console.debug('${y}' + JSON.stringify(msg)); };
+  var results = [], placed = [];
+  var current = route();
+  items.forEach(function (item) {
+    var a = item.anchor;
+    if (a.route !== current) { results.push({ id: item.id, state: 'elsewhere' }); return; }
+    // Comments from before the state was recorded have none, and are shown wherever their element is.
+    if (a.state !== undefined && a.state !== pageState()) { results.push({ id: item.id, state: 'otherState' }); return; }
+    var el = null, state = 'found';
+    try { var hits = doc.querySelectorAll(a.selector); if (hits.length === 1) el = hits[0]; } catch (e) {}
+    // The selector did not match, so follow the text instead. The stored text is a prefix cut at 80
+    // characters, often mid-word, and the page may have changed a little since; so this takes the
+    // smallest element whose text *begins like* the stored text, rather than demanding the whole
+    // prefix still match. A comment that lands roughly in the right place is worth far more than one
+    // that disappears, which is what an exact match gave whenever a single character moved.
+    if (!el && a.nearbyText.length >= 3) {
+      var want = a.nearbyText;
+      // Enough to identify the element, short enough to survive an edit further along the line.
+      var head = want.slice(0, Math.max(12, Math.min(40, want.length)));
+      var best = null, bestLen = Infinity, all = doc.body ? doc.body.querySelectorAll('*') : [];
+      for (var i = 0; i < all.length; i++) {
+        var t = collapse(all[i].textContent);
+        if (t.length === 0) continue;
+        // Either side may be the longer: the stored text is a prefix of the live text, or the element's
+        // text was shortened since. The shortest element that still matches is the innermost one.
+        var hit = t.indexOf(want) === 0 || want.indexOf(t) === 0 || t.indexOf(head) === 0;
+        if (hit && t.length < bestLen) { best = all[i]; bestLen = t.length; }
+      }
+      if (best) { el = best; state = 'moved'; }
+    }
+    if (!el) { results.push({ id: item.id, state: 'missing' }); return; }
+    placed.push({ id: item.id, number: item.number, draft: item.id < 0, movable: !!item.movable, el: el, offset: a.offset || { x: 0, y: 0 }, pos: null });
+    results.push({ id: item.id, state: state });
+  });
+  if (placed.length === 0) { window.__fdMarkers = undefined; return results; }
+
+  layer = doc.createElement('div');
+  layer.setAttribute('data-fd-layer', 'pins');
+  layer.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none';
+
+  var place = function () {
+    placed.forEach(function (p) {
+      var x, y, hidden = false;
+      if (p.pos) { x = p.pos.x; y = p.pos.y; }
+      else {
+        var r = p.el.getBoundingClientRect();
+        x = r.left + r.width * p.offset.x; y = r.top + r.height * p.offset.y;
+        hidden = r.width === 0 && r.height === 0;
+      }
+      p.marker.style.left = x + 'px';
+      p.marker.style.top = y + 'px';
+      p.marker.style.display = hidden ? 'none' : 'block';
+    });
+  };
+
+  // A teardrop pin whose tip is the point that was clicked. The wrapper has no
+  // size and sits exactly on that point; the pin hangs above it.
+  placed.forEach(function (p) {
+    var m = doc.createElement('div');
+    m.style.cssText = 'position:fixed;width:0;height:0;pointer-events:none';
+    var pin = doc.createElement('div');
+    pin.style.cssText = 'position:absolute;left:-14px;top:-33px;width:28px;height:28px;border-radius:50% 50% 50% 0;background:' + (p.draft ? '${l.draft}' : '${l.pin}') + ';border:2px solid ${l.on};box-shadow:0 2px 6px ${l.shadow};transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:' + (p.movable ? 'grab' : 'pointer');
+    var label = doc.createElement('span');
+    label.textContent = String(p.number);
+    label.style.cssText = 'transform:rotate(45deg);color:${l.on};font:700 12px/1 sans-serif;pointer-events:none';
+    pin.appendChild(label);
+    m.appendChild(pin);
+    p.marker = m;
+    p.pin = pin;
+    layer.appendChild(m);
+
+    // Click selects; dragging (only for the viewer's own pins) moves. Nothing
+    // here reaches the page's own handlers.
+    pin.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      var sx = e.clientX, sy = e.clientY, dragging = false, hover = null;
+      if (pin.setPointerCapture && e.pointerId !== undefined) { try { pin.setPointerCapture(e.pointerId); } catch (err) {} }
+      var move = function (ev) {
+        ev.stopPropagation();
+        if (!p.movable) return;
+        if (!dragging && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+        dragging = true;
+        p.pos = { x: ev.clientX, y: ev.clientY };
+        pin.style.cursor = 'grabbing';
+        place();
+        // Dropping re-attaches the pin to whatever is under it, so show what that is while it is being
+        // dragged -- the same outline, from the same code, as when a pin is first placed. It exists
+        // only for the length of the drag: there is nothing to point at the rest of the time.
+        if (!hover) hover = hoverOutline();
+        hover.show(underlying(ev.clientX, ev.clientY), '');
+      };
+      var up = function (ev) {
+        ev.stopPropagation();
+        pin.removeEventListener('pointermove', move);
+        pin.removeEventListener('pointerup', up);
+        if (hover) { hover.remove(); hover = null; }
+        if (pin.releasePointerCapture && e.pointerId !== undefined) { try { pin.releasePointerCapture(e.pointerId); } catch (err) {} }
+        pin.style.cursor = p.movable ? 'grab' : 'pointer';
+        if (!dragging) { say({ t: 'click', id: p.id }); return; }
+        var target = underlying(ev.clientX, ev.clientY);
+        if (!target) { p.pos = null; place(); return; }
+        // The pin stays where it was dropped until the app redraws it from the saved comment.
+        say({ t: 'move', id: p.id, anchor: describe(target, ev.clientX, ev.clientY) });
+      };
+      pin.addEventListener('pointermove', move);
+      pin.addEventListener('pointerup', up);
+    });
+  });
+  doc.documentElement.appendChild(layer);
+  place();
+  window.addEventListener('scroll', place, true);
+  window.addEventListener('resize', place);
+  var timer = setInterval(place, 400);
+  window.__fdMarkers = {
+    stop: function () { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); clearInterval(timer); },
+    focus: function (id) {
+      for (var i = 0; i < placed.length; i++) {
+        if (placed[i].id === id) {
+          placed[i].el.scrollIntoView({ block: 'center', inline: 'nearest' });
+          var m = placed[i].marker.firstChild;
+          m.animate([{ transform: 'rotate(-45deg) scale(1)' }, { transform: 'rotate(-45deg) scale(1.6)' }, { transform: 'rotate(-45deg) scale(1)' }], { duration: 700 });
+          place();
+        }
+      }
+    }
+  };
+  return results;
+})(${JSON.stringify(e)}, ${JSON.stringify(t)})`,M=e=>`window.__fdMarkers && window.__fdMarkers.focus(${Number.isInteger(e)?e:-1})`;var k=/<!--\s*fd-anchor:\s*(\{[\s\S]*?\})\s*-->/,z=/<!--\s*fd-picture:\s*(\S+)\s*-->/,Q=/^data:image\/jpeg;base64,[A-Za-z0-9+/]{1,24000}={0,2}$/,j=e=>typeof e=="string"&&Q.test(e)?e:null,g=(e,t)=>typeof e=="string"?e.slice(0,t):"",N=e=>Number.isFinite(e)?Math.max(0,Math.min(1e5,Math.round(e))):0,O=e=>Number.isFinite(e)?Math.max(0,Math.min(1,e)):0,C=e=>{if(typeof e!="object"||e===null)return null;let t=e,n=g(t.route,300),o=g(t.selector,500);if(!n.startsWith("/")||o==="")return null;let s=t.viewport??{},r=t.offset,a=typeof t.state=="string"&&/^(\?[^\s<>`"']{0,199})?$/.test(t.state)?t.state:void 0,w=(b,Z)=>typeof b=="string"?b.replace(/[\u0000-\u001f<>`]/g," ").replace(/\s+/g," ").trim().slice(0,Z):"",c=/^[a-z][a-z0-9-]{0,30}$/.test(typeof t.tag=="string"?t.tag:"")?t.tag:void 0,f=(Array.isArray(t.inside)?t.inside:[]).map(b=>w(b,60)).filter(Boolean).slice(0,3);return{route:n,selector:o,nearbyText:g(t.nearbyText,120),viewport:{width:N(s.width),height:N(s.height)},commit:/^[0-9a-f]{0,40}$/i.test(g(t.commit,40))?g(t.commit,40):"",...r?{offset:{x:O(r.x),y:O(r.y)}}:{},...a!==void 0?{state:a}:{},...c!==void 0?{tag:c}:{},...f.length>0?{inside:f}:{}}},D=(e,t,n=null)=>{if(!t)return e;let o=JSON.stringify(t).replace(/</g,"\\u003c").replace(/>/g,"\\u003e"),s=`_On \`${t.route}${t.state??""}\` \xB7 \`${t.selector.replace(/`/g,"'")}\`_`,r=j(n);return`${e}
+
+${s}
+<!-- fd-anchor: ${o} -->${r?`
+<!-- fd-picture: ${r} -->`:""}`},H=e=>j(z.exec(e)?.[1]),ee="<!-- resolved -->",B=e=>e.includes(ee);var q=/<!-- fd-addressed: ([0-9a-f]{7,40}) -->/;var F=e=>{let t=k.exec(e);if(!t?.[1])return null;try{return C(JSON.parse(t[1]))}catch{return null}},K=e=>k.test(e)?e.replace(z,"").replace(q,"").replace(k,"").replace(/\n*_On `[^\n]*`_\s*$/,"").trim():e.replace(q,"").trimEnd();var E=e=>e.filter(t=>!t.resolved);var A=e=>{let t=[...e].sort((n,o)=>n.createdAt.localeCompare(o.createdAt));return new Map([...t.filter(n=>n.anchor),...t.filter(n=>!n.anchor)].map((n,o)=>[n.id,o+1]))};var U=(e,t,n,o)=>{let s=e.filter(a=>a.anchor),r=E(s).map(a=>({id:a.id,number:t.get(a.id)??0,anchor:a.anchor,movable:a.author===n}));return o?.composing&&r.push({id:-1,number:s.length+1,anchor:o.anchor,movable:!0}),r};var te="noahshrader-flock/prototype-pages-sandbox",ne=1,X=`https://api.github.com/repos/${te}/issues/${ne}/comments`,Y="fd-token",W="sandbox",x=e=>(0,eval)(e),d=[],m=!1,S=null,v=null,p=()=>localStorage.getItem(Y),i=(e,t,n)=>{let o=document.createElement(e);return o.style.cssText=t,n!==void 0&&(o.textContent=n),o},J="font:600 13px system-ui;border:1px solid #1d3557;background:#1d3557;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer",R="font:13px system-ui;border:1px solid #c8d1de;background:#fff;color:#1c2430;border-radius:8px;padding:8px 12px;cursor:pointer",re=e=>{let t=String(e.body??"");return{id:Number(e.id),author:String(e.user?.login??"unknown"),authorAvatarUrl:e.user?.avatar_url??null,body:K(t.replace("<!-- resolved -->","").trim()),createdAt:String(e.created_at??""),resolved:B(t),addressedAt:null,anchor:F(t),picture:H(t)}},$=async()=>{let e=await fetch(`${X}?per_page=100`,{headers:p()?{Authorization:`Bearer ${p()}`}:{}});e.ok&&(d=(await e.json()).map(re)),oe(),h()},oe=()=>{let e=U(d,A(d),v,null);x(I(e,"sandbox"))},ie=console.debug.bind(console);console.debug=(...e)=>{let t=e[0];if(typeof t=="string"&&t.startsWith(y)){try{let n=JSON.parse(t.slice(y.length));n.t==="click"&&typeof n.id=="number"&&(S=n.id,m=!0,h())}catch{}return}ie(...e)};var T=i("div","position:fixed;right:16px;bottom:16px;z-index:2147483600;display:flex;gap:8px;align-items:flex-start;font:13px system-ui"),u=i("div","position:fixed;right:16px;bottom:64px;width:340px;max-height:60vh;overflow:auto;z-index:2147483600;background:#fff;border:1px solid #c8d1de;border-radius:12px;box-shadow:0 12px 32px rgba(20,30,50,.18);padding:14px;font:13px system-ui;color:#1c2430;display:none");document.body.append(u,T);var G=()=>{let e=window.prompt("Paste a GitHub token with Issues write access to this sandbox repository (test only; it stays in this browser).");e&&e.trim()&&(localStorage.setItem(Y,e.trim()),V().then(h))},V=async()=>{if(!p())return void(v=null);let e=await fetch("https://api.github.com/user",{headers:{Authorization:`Bearer ${p()}`}});v=e.ok&&String((await e.json()).login??"")||null},ae=async(e,t)=>{let n=await fetch(X,{method:"POST",headers:{Authorization:`Bearer ${p()}`,"Content-Type":"application/json",Accept:"application/vnd.github+json"},body:JSON.stringify({body:D(e,t,null)})});return n.ok?null:n.status===401||n.status===403||n.status===404?"GitHub did not accept the token. Use a token with Issues write access to this repository.":`GitHub returned ${n.status}.`},se=(e,t)=>{let n=i("div",`position:fixed;left:${Math.min(t.x+18,window.innerWidth-320)}px;top:${Math.min(t.y+10,window.innerHeight-220)}px;width:300px;z-index:2147483601;background:#fff;border:1px solid #c8d1de;border-radius:12px;box-shadow:0 12px 32px rgba(20,30,50,.22);padding:12px;font:13px system-ui;color:#1c2430`),o=i("div","color:#b3261e;margin-bottom:6px;display:none"),s=i("div","color:#5b6677;margin-bottom:6px",`On: ${e.tag??"element"}${e.nearbyText?` \u201C${e.nearbyText.slice(0,40)}\u201D`:""}`),r=i("textarea","width:100%;box-sizing:border-box;height:80px;border:1px solid #c8d1de;border-radius:8px;padding:8px;font:13px system-ui"),a=i("div","display:flex;gap:8px;justify-content:flex-end;margin-top:8px"),w=i("button",R,"Cancel"),c=i("button",J,"Save");w.onclick=()=>n.remove(),c.onclick=async()=>{if(!r.value.trim())return;c.disabled=!0;let f=await ae(r.value.trim(),e);if(f){o.textContent=f,o.style.display="block",c.disabled=!1;return}n.remove(),await $()},a.append(w,c),n.append(o,s,r,a),document.body.append(n),r.focus()},le=async()=>{if(!p())return G();m=!1,h();let e=await x(L);if(!e)return;let t=C({...e,commit:W==="sandbox"?"":W});t&&se(t,e.at??{x:100,y:100})},h=()=>{T.replaceChildren();let e=E(d).length,t=i("button",J,"Comment");t.onclick=()=>void le();let n=i("button",R,`Comments (${e})`);n.onclick=()=>{m=!m,h()};let o=i("button",R,p()?v?`Signed in as ${v}`:"Token set":"Sign in");if(o.onclick=G,T.append(t,n,o),u.style.display=m?"block":"none",u.replaceChildren(),!m)return;u.append(i("div","font-weight:700;margin-bottom:8px","Comments")),d.length===0&&u.append(i("div","color:#5b6677","No comments yet. Choose Comment, then click anything on the page."));let s=A(d);for(let r of d){let a=i("div",`border:1px solid ${S===r.id?"#1d3557":"#e1e6ee"};border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer`);a.append(i("div","font-weight:600;margin-bottom:4px",`${s.get(r.id)?`${s.get(r.id)}  \xB7  `:""}${r.author}`),i("div","",r.body)),r.anchor&&a.append(i("div","color:#5b6677;margin-top:4px;font-size:12px",`${r.anchor.tag??"element"}${r.anchor.inside?.length?` in ${r.anchor.inside.join(" \u203A ")}`:""}`)),a.onclick=()=>{S=r.id,r.anchor&&x(M(r.id)),h()},u.append(a)}};window.addEventListener("load",()=>{setTimeout(()=>void V().then($),600),setInterval(()=>void $(),3e4)});window.addEventListener("keydown",e=>{e.key==="Escape"&&x(_)});h();})();
 </script></body></html>
